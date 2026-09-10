@@ -2,7 +2,6 @@
 
 #include "essential.h"
 #include "viper/ViPER.h"
-#include <chrono>
 #include <string>
 #include <vector>
 
@@ -40,11 +39,6 @@ private:
     // Viper
     bool enable_;
     ViPER viper_;
-
-    // Stream discontinuity detection
-    std::chrono::steady_clock::time_point last_process_time_;
-    bool has_processed_;
-    uint32_t fade_in_remaining_;
 
     static void CopyBufferConfig(buffer_config_t *dest, const buffer_config_t *src);
     void HandleSetConfig(const effect_config_t *new_config);

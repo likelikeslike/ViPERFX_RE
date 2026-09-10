@@ -1,7 +1,6 @@
 #include "ViperContext.h"
 #include "log.h"
 #include "viper/constants.h"
-#include <chrono>
 
 #define SET(type, ptr, value) (*(type *) (ptr) = (value))
 
@@ -71,9 +70,7 @@ ViperContext::ViperContext() :
     disable_reason_(DisableReason::NONE),
     buffer_(std::vector<float>()),
     buffer_frame_count_(0),
-    enable_(false),
-    has_processed_(false),
-    fade_in_remaining_(0) {
+    enable_(false) {
     VIPER_LOGI("ViperContext created");
 }
 
@@ -399,8 +396,6 @@ int32_t ViperContext::HandleCommand(
             if (!buffer_.empty()) {
                 memset(buffer_.data(), 0, buffer_.size() * sizeof(float));
             }
-            has_processed_ = false;
-            fade_in_remaining_ = 0;
             enable_ = true;
             SET(int32_t, reply_data, 0);
             return 0;
@@ -563,23 +558,6 @@ int32_t ViperContext::Process(audio_buffer_t *in_buffer, audio_buffer_t *out_buf
     asm volatile("vmsr fpscr, %0" ::"r"(orig_fpscr | (1 << 24)));
 #endif
 
-    auto now = std::chrono::steady_clock::now();
-    if (has_processed_) {
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                           now - last_process_time_
-        )
-                           .count();
-        if (elapsed > 100) {
-            viper_.ResetAllEffects();
-            fade_in_remaining_ = 128;
-        }
-    } else {
-        viper_.ResetAllEffects();
-        fade_in_remaining_ = 128;
-        has_processed_ = true;
-    }
-    last_process_time_ = now;
-
     size_t frame_count = in_buffer->frame_count;
     if (frame_count > buffer_frame_count_) {
         buffer_.resize(frame_count * 2);
@@ -603,18 +581,6 @@ int32_t ViperContext::Process(audio_buffer_t *in_buffer, audio_buffer_t *out_buf
             asm volatile("vmsr fpscr, %0" ::"r"(orig_fpscr));
 #endif
             return -EINVAL;
-    }
-
-    // TODO: Remove fade-in.
-    if (fade_in_remaining_ > 0) {
-        uint32_t fade_samples =
-            fade_in_remaining_ < frame_count ? fade_in_remaining_ : frame_count;
-        for (uint32_t i = 0; i < fade_samples; i++) {
-            float gain = static_cast<float>(128 - fade_in_remaining_ + i) / 128.0f;
-            buffer_[i * 2] *= gain;
-            buffer_[i * 2 + 1] *= gain;
-        }
-        fade_in_remaining_ -= fade_samples;
     }
 
     viper_.Process(buffer_, frame_count);
