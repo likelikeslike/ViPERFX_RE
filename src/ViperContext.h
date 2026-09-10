@@ -47,8 +47,8 @@ private:
     bool has_processed_;
     uint32_t fade_in_remaining_;
 
-    static void CopyBufferConfig(buffer_config_t *dest, buffer_config_t *src);
-    void HandleSetConfig(effect_config_t *new_config);
+    static void CopyBufferConfig(buffer_config_t *dest, const buffer_config_t *src);
+    void HandleSetConfig(const effect_config_t *new_config);
 
     int32_t HandleSetParam(effect_param_t *cmd_param, void *reply_data);
     int32_t HandleGetParam(

@@ -1,9 +1,7 @@
 #include "ViperContext.h"
 #include "log.h"
 #include "viper/constants.h"
-#include <cerrno>
 #include <chrono>
-#include <cstring>
 
 #define SET(type, ptr, value) (*(type *) (ptr) = (value))
 
@@ -15,6 +13,58 @@ constexpr int32_t kParamGetConvolutionKernelId = 5;
 constexpr int32_t kParamGetDriverVersionCode = 6;
 constexpr int32_t kParamGetDriverVersionName = 7;
 constexpr int32_t kParamGetArchitecture = 8;
+constexpr size_t kParamPayloadHeaderSize =
+    sizeof(uint32_t) + sizeof(int32_t) + sizeof(uint32_t);
+
+bool DecodeParamValue(const uint8_t *bytes, size_t byte_count, viper::ParamValue *out) {
+    if (bytes == nullptr || out == nullptr || byte_count < kParamPayloadHeaderSize) {
+        return false;
+    }
+
+    uint32_t type;
+    uint32_t count_or_size;
+    std::memcpy(&type, bytes, sizeof(type));
+    std::memcpy(&out->index, bytes + sizeof(type), sizeof(out->index));
+    std::memcpy(
+        &count_or_size, bytes + sizeof(type) + sizeof(out->index), sizeof(count_or_size)
+    );
+
+    out->type = static_cast<viper::ParamValueType>(type);
+    const uint8_t *payload = bytes + kParamPayloadHeaderSize;
+    const size_t payload_size = byte_count - kParamPayloadHeaderSize;
+
+    switch (out->type) {
+        case viper::ParamValueType::kBool:
+            if (count_or_size != 1 || payload_size != 1) return false;
+            out->bool_value = payload[0] != 0;
+            return true;
+        case viper::ParamValueType::kInt:
+            if (count_or_size != 1 || payload_size != sizeof(int32_t)) return false;
+            std::memcpy(&out->int_value, payload, sizeof(out->int_value));
+            return true;
+        case viper::ParamValueType::kFloat:
+            if (count_or_size != 1 || payload_size != sizeof(float)) return false;
+            std::memcpy(&out->float_value, payload, sizeof(out->float_value));
+            return true;
+        case viper::ParamValueType::kFloatArray:
+            if (payload_size != count_or_size * sizeof(float)) return false;
+            out->float_array = reinterpret_cast<const float *>(payload);
+            out->float_count = count_or_size;
+            return true;
+        case viper::ParamValueType::kBytes:
+            if (payload_size != count_or_size) return false;
+            out->bytes = payload;
+            out->byte_count = count_or_size;
+            return true;
+        case viper::ParamValueType::kIntArray:
+            if (payload_size != count_or_size * sizeof(int32_t)) return false;
+            out->int_array = reinterpret_cast<const int32_t *>(payload);
+            out->int_count = count_or_size;
+            return true;
+        default:
+            return false;
+    }
+}
 
 ViperContext::ViperContext() :
     config_({}),
@@ -27,7 +77,7 @@ ViperContext::ViperContext() :
     VIPER_LOGI("ViperContext created");
 }
 
-void ViperContext::CopyBufferConfig(buffer_config_t *dest, buffer_config_t *src) {
+void ViperContext::CopyBufferConfig(buffer_config_t *dest, const buffer_config_t *src) {
     if (src->mask & EFFECT_CONFIG_BUFFER) {
         dest->buffer = src->buffer;
     }
@@ -55,7 +105,7 @@ void ViperContext::CopyBufferConfig(buffer_config_t *dest, buffer_config_t *src)
     dest->mask |= src->mask;
 }
 
-void ViperContext::HandleSetConfig(effect_config_t *new_config) {
+void ViperContext::HandleSetConfig(const effect_config_t *new_config) {
     VIPER_LOGI("Checking input and output configuration ...");
 
     VIPER_LOGI("Input mask: 0x%04X", new_config->input_cfg.mask);
@@ -180,46 +230,15 @@ int32_t ViperContext::HandleSetParam(effect_param_t *cmd_param, void *reply_data
     *static_cast<int *>(reply_data) = 0;
 
     const int param = *reinterpret_cast<int *>(cmd_param->data);
-    const int *int_values = reinterpret_cast<int *>(cmd_param->data + offset);
-    switch (cmd_param->vsize) {
-        case sizeof(int): {
-            viper_.DispatchRawParam(param, int_values[0], 0, 0, 0, nullptr);
-            return 0;
-        }
-        case sizeof(int) * 2: {
-            viper_.DispatchRawParam(param, int_values[0], int_values[1], 0, 0, nullptr);
-            return 0;
-        }
-        case sizeof(int) * 3: {
-            viper_.DispatchRawParam(
-                param, int_values[0], int_values[1], int_values[2], 0, nullptr
-            );
-            return 0;
-        }
-        case 256:
-        case 1024: {
-            const uint32_t arr_size =
-                *reinterpret_cast<uint32_t *>(cmd_param->data + offset);
-            const auto arr = reinterpret_cast<signed char *>(
-                cmd_param->data + offset + sizeof(uint32_t)
-            );
-            viper_.DispatchRawParam(param, 0, 0, 0, arr_size, arr);
-            return 0;
-        }
-        case 8192: {
-            const int value1 = *reinterpret_cast<int *>(cmd_param->data + offset);
-            const uint32_t arr_size =
-                *reinterpret_cast<uint32_t *>(cmd_param->data + offset + sizeof(int));
-            const auto arr = reinterpret_cast<signed char *>(
-                cmd_param->data + offset + sizeof(int) + sizeof(uint32_t)
-            );
-            viper_.DispatchRawParam(param, value1, 0, 0, arr_size, arr);
-            return 0;
-        }
-        default: {
-            return -EINVAL;
-        }
+    viper::ParamValue value;
+    if (!DecodeParamValue(
+            reinterpret_cast<const uint8_t *>(cmd_param->data + offset),
+            cmd_param->vsize,
+            &value
+        )) {
+        return -EINVAL;
     }
+    return viper_.DispatchParamValue(param, value) ? 0 : -EINVAL;
 }
 
 int32_t ViperContext::HandleGetParam(
@@ -459,7 +478,7 @@ int32_t ViperContext::HandleCommand(
                 );
                 return -EINVAL;
             }
-            *(effect_config_t *) reply_data = config_;
+            *static_cast<effect_config_t *>(reply_data) = config_;
             return 0;
         }
         default: {
