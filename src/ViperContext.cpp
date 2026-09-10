@@ -7,7 +7,7 @@
 
 constexpr int32_t kParamGetEnabled = 1;
 constexpr int32_t kParamGetConfigure = 2;
-constexpr int32_t kParamGetStreaming = 3;
+constexpr int32_t kParamGetProcessedFrames = 3;
 constexpr int32_t kParamGetSamplingRate = 4;
 constexpr int32_t kParamGetConvolutionKernelId = 5;
 constexpr int32_t kParamGetDriverVersionCode = 6;
@@ -269,15 +269,11 @@ int32_t ViperContext::HandleGetParam(
                 sizeof(effect_param_t) + reply_param->psize + offset + reply_param->vsize;
             return 0;
         }
-        case kParamGetStreaming: {
+        case kParamGetProcessedFrames: {
             const uint64_t frames = viper_.GetProcessedFrames();
-            const int32_t is_processing =
-                (frames != last_streaming_frames_ && frames > 0) ? 1 : 0;
-            last_streaming_frames_ = frames;
-
             reply_param->status = 0;
-            reply_param->vsize = sizeof(int32_t);
-            *reinterpret_cast<int32_t *>(reply_param->data + offset) = is_processing;
+            reply_param->vsize = sizeof(uint64_t);
+            *reinterpret_cast<uint64_t *>(reply_param->data + offset) = frames;
             *reply_size =
                 sizeof(effect_param_t) + reply_param->psize + offset + reply_param->vsize;
             return 0;
