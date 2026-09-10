@@ -14,12 +14,18 @@ AllowShortLoopsOnASingleLine: false
 AllowShortBlocksOnASingleLine: Empty
 AllowShortEnumsOnASingleLine: false
 
-AlignAfterOpenBracket: BlockIndent
+AlignAfterOpenBracket: true
 AlignConsecutiveAssignments: false
 AlignConsecutiveDeclarations: false
 AlignTrailingComments: true
 AlignOperands: Align
 
+BreakAfterOpenBracketBracedList: true
+BreakAfterOpenBracketFunction: true
+BreakAfterOpenBracketIf: true
+BreakBeforeCloseBracketBracedList: true
+BreakBeforeCloseBracketFunction: true
+BreakBeforeCloseBracketIf: true
 BreakBeforeBinaryOperators: NonAssignment
 
 BreakAfterReturnType: None
@@ -49,4 +55,4 @@ IndentCaseLabels: true
 IndentCaseBlocks: false
 
 NamespaceIndentation: None
-ReflowComments: false
+ReflowComments: IndentOnly
