@@ -1,3 +1,15 @@
+## 2.1.2
+
+### Fixed
+
+- Pure bass+ issue
+- **AIDL**: ODM config mount issue (#36)
+- **AIDL**: MediaTek devices SELinux rules(#38)
+
+### App Requirements:
+
+2.1.1+
+
 ## 2.1.1
 
 ### Improved
